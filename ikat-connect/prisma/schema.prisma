@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  WEAVER
+  ADMIN
+}
+
+enum WeaverStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ProductCategory {
+  SAREE
+  DUPATTA
+  DRESS_MATERIAL
+}
+
+enum OrderStatus {
+  PLACED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum YarnRequestStatus {
+  OPEN
+  POOLED
+  ORDERED
+  DELIVERED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+  weaver    Weaver?
+  cartItems CartItem[]
+}
+
+model Weaver {
+  id                String       @id @default(cuid())
+  userId            String       @unique
+  user              User         @relation(fields: [userId], references: [id])
+  aadhaarNumber     String       @unique
+  weaverId          String       @unique
+  cooperativeMember Boolean      @default(false)
+  bio               String?
+  location          String
+  profileImageUrl   String?
+  status            WeaverStatus @default(PENDING)
+  verifiedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  products     Product[]
+  yarnRequests YarnRequest[]
+}
+
+model Product {
+  id          String          @id @default(cuid())
+  productCode String          @unique
+  title       String
+  description String
+  price       Decimal         @db.Decimal(10, 2)
+  stock       Int             @default(0)
+  category    ProductCategory
+  images      String[]
+  weaverId    String
+  weaver      Weaver          @relation(fields: [weaverId], references: [id])
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+
+  @@index([category])
+  @@index([weaverId])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  addedAt   DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  customerId      String
+  customer        User          @relation(fields: [customerId], references: [id])
+  status          OrderStatus   @default(PLACED)
+  paymentStatus   PaymentStatus @default(PENDING)
+  razorpayOrderId String?       @unique
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  shippingAddress Json
+  sheetsRowId     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+}
+
+model YarnRequest {
+  id         String            @id @default(cuid())
+  weaverId   String
+  weaver     Weaver            @relation(fields: [weaverId], references: [id])
+  yarnType   String
+  quantityKg Decimal           @db.Decimal(8, 2)
+  status     YarnRequestStatus @default(OPEN)
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([status])
+}

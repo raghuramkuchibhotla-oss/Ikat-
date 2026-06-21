@@ -1,300 +1,145 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import {
-  Search,
-  Package,
-  Truck,
-  CheckCircle,
-  Clock,
-  ArrowRight,
-} from "lucide-react";
-import { useAuthStore } from "@/lib/auth-store";
-import { useDataStore } from "@/lib/data-store";
-import { formatPrice, formatDate } from "@/lib/utils";
+import { useSession } from "@/providers/session-provider";
+import { Package, Truck, CheckCircle, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { getMyOrders } from "@/actions/orders";
+import { formatPrice } from "@/lib/utils";
 
-const statusSteps = [
-  { key: "order-received", label: "Order Received", icon: Package },
-  { key: "processing", label: "Processing", icon: Clock },
-  { key: "shipped", label: "Shipped", icon: Truck },
-  { key: "delivered", label: "Delivered", icon: CheckCircle },
+const ORDERS_PER_PAGE = 5;
+
+const STATUS_STEPS = [
+  { key: "PLACED", label: "Order Placed", icon: Package },
+  { key: "PROCESSING", label: "Processing", icon: Clock },
+  { key: "SHIPPED", label: "Shipped", icon: Truck },
+  { key: "DELIVERED", label: "Delivered", icon: CheckCircle },
 ];
 
+function statusBadgeClass(status: string) {
+  if (status === "DELIVERED") return "badge-success";
+  if (status === "SHIPPED") return "badge-info";
+  if (status === "PROCESSING") return "badge-warning";
+  if (status === "CANCELLED") return "bg-rose-500/10 text-rose-400 border border-rose-500/20";
+  return "badge-primary";
+}
+
 export default function OrdersPage() {
-  const { orders } = useDataStore();
-  const { user, isLoggedIn } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
-  const [searchId, setSearchId] = useState("");
-  const [trackedOrder, setTrackedOrder] = useState<any>(undefined);
-  const [showTracker, setShowTracker] = useState(false);
+  const { user } = useSession();
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const handleTrack = (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = searchId.trim().toUpperCase();
-    const order = orders.find((o) => o.orderId === id || o.id === id);
-    setTrackedOrder(order);
-    setShowTracker(true);
-  };
-
-  const getStatusIndex = (status: string) => {
-    return statusSteps.findIndex((s) => s.key === status);
-  };
-
-  // Filter orders for the logged-in customer
-  const customerOrders = user
-    ? orders.filter((o) => o.customerId === user.id)
-    : [];
+    if (!user) { setLoading(false); return; }
+    getMyOrders().then((data) => { setOrders(data as any[]); setLoading(false); }).catch(() => setLoading(false));
+  }, [user]);
 
   return (
     <div className="bg-[#0c0a09] min-h-screen py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-10 animate-fade-in-up">
-          <h1 className="text-3xl md:text-4xl font-serif font-bold text-white mb-3">
-            Track Your Order
-          </h1>
-          <p className="text-stone-400">
-            Enter your Order ID to track the delivery status
-          </p>
+          <h1 className="text-3xl md:text-4xl font-serif font-bold text-white mb-3">My Orders</h1>
+          <p className="text-stone-400">Track your authentic Ikat purchases</p>
         </div>
 
-        {/* Search */}
-        <form
-          onSubmit={handleTrack}
-          className="card p-6 mb-10 animate-fade-in-up"
-        >
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-              <input
-                type="text"
-                value={searchId}
-                onChange={(e) => setSearchId(e.target.value.toUpperCase())}
-                placeholder="Enter Order ID (e.g. POC-IKAT-2001)"
-                className="input-field pl-11 font-mono"
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn-primary flex items-center gap-2"
-            >
-              Track <ArrowRight className="w-4 h-4" />
-            </button>
+        {loading ? (
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => <div key={i} className="card p-6 animate-pulse h-24 bg-stone-800/50" />)}
           </div>
-          <p className="text-stone-600 text-xs mt-2">
-            Try: POC-IKAT-2001, POC-IKAT-2002, POC-IKAT-2003
-          </p>
-        </form>
-
-        {/* Tracked Order */}
-        {showTracker && trackedOrder && (
-          <div className="animate-fade-in-up mb-10">
-            <div className="card p-6">
-              <div className="flex items-start gap-4 mb-8">
-                <div className="relative w-16 h-20 rounded-xl overflow-hidden flex-shrink-0">
-                  <Image
-                    src={trackedOrder.productImage}
-                    alt={trackedOrder.productName}
-                    fill
-                    className="object-cover"
-                    sizes="64px"
-                  />
-                </div>
-                <div className="flex-1">
-                  <p className="text-amber-400 font-mono text-sm font-bold">
-                    {trackedOrder.orderId}
-                  </p>
-                  <h3 className="text-white font-semibold">
-                    {trackedOrder.productName}
-                  </h3>
-                  <p className="text-stone-500 text-xs">
-                    by {trackedOrder.weaverName} • Qty: {trackedOrder.quantity}
-                  </p>
-                  <p className="text-stone-400 text-sm mt-1">
-                    {formatPrice(trackedOrder.totalAmount)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Timeline */}
-              <div className="relative">
-                {statusSteps.map((step, i) => {
-                  const currentIdx = getStatusIndex(trackedOrder.status);
-                  const isCompleted = i <= currentIdx;
-                  const isCurrent = i === currentIdx;
-
-                  return (
-                    <div key={step.key} className="flex items-start gap-4 mb-6 last:mb-0">
-                      {/* Line & Dot */}
-                      <div className="flex flex-col items-center">
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            isCompleted
-                              ? isCurrent
-                                ? "gradient-primary animate-pulse-glow"
-                                : "bg-emerald-600"
-                              : "bg-stone-800"
-                          }`}
-                        >
-                          <step.icon
-                            className={`w-5 h-5 ${
-                              isCompleted ? "text-white" : "text-stone-500"
-                            }`}
-                          />
-                        </div>
-                        {i < statusSteps.length - 1 && (
-                          <div
-                            className={`w-0.5 h-8 mt-1 ${
-                              i < currentIdx
-                                ? "bg-emerald-600"
-                                : "bg-stone-800"
-                            }`}
-                          />
-                        )}
+        ) : !user ? (
+          <div className="card p-8 text-center animate-fade-in-up">
+            <h3 className="text-white font-semibold mb-2">Sign in to see your orders</h3>
+            <p className="text-stone-400 text-sm mb-4">View and track all your purchases in one place.</p>
+            <Link href="/sign-in" className="btn-primary inline-block">Sign In</Link>
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="card p-12 text-center animate-fade-in-up">
+            <Package className="w-12 h-12 text-stone-600 mx-auto mb-4" />
+            <h3 className="text-white font-semibold mb-2">No orders yet</h3>
+            <p className="text-stone-400 text-sm mb-6">Start shopping to see your orders here</p>
+            <Link href="/products" className="btn-primary">Browse Products</Link>
+          </div>
+        ) : (
+          <div className="space-y-4 animate-fade-in-up">
+            {orders.slice((page - 1) * ORDERS_PER_PAGE, page * ORDERS_PER_PAGE).map((order) => {
+              const firstItem = order.items?.[0];
+              const currentStepIdx = STATUS_STEPS.findIndex((s) => s.key === order.status);
+              return (
+                <div key={order.id} className="card p-5">
+                  <div className="flex items-start gap-4 mb-4">
+                    {firstItem?.product?.images?.[0] && (
+                      <div className="relative w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-stone-800">
+                        <img src={firstItem.product.images[0]} alt={firstItem.product.title} className="w-full h-full object-cover" />
                       </div>
-                      {/* Content */}
-                      <div className="pt-1.5">
-                        <p
-                          className={`font-medium ${
-                            isCompleted ? "text-white" : "text-stone-500"
-                          }`}
-                        >
-                          {step.label}
-                        </p>
-                        {isCurrent && (
-                          <p className="text-indigo-400 text-xs mt-0.5">
-                            Current Status
-                          </p>
-                        )}
-                        {step.key === "delivered" && isCompleted && (
-                          <p className="text-emerald-400 text-xs mt-0.5">
-                            Delivered on {formatDate(trackedOrder.estimatedDelivery)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-stone-800 text-sm text-stone-400">
-                <p>
-                  Estimated Delivery:{" "}
-                  <span className="text-white font-medium">
-                    {formatDate(trackedOrder.estimatedDelivery)}
-                  </span>
-                </p>
-                <p className="mt-1">
-                  Payment:{" "}
-                  <span className="text-white">
-                    {trackedOrder.paymentMethod}
-                  </span>{" "}
-                  •{" "}
-                  <span className="text-emerald-400">
-                    {trackedOrder.paymentStatus}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showTracker && !trackedOrder && (
-          <div className="card p-8 text-center animate-fade-in-up mb-10">
-            <Package className="w-12 h-12 text-stone-600 mx-auto mb-3" />
-            <h3 className="text-white font-semibold mb-1">Order Not Found</h3>
-            <p className="text-stone-400 text-sm">
-              Please check your Order ID and try again
-            </p>
-          </div>
-        )}
-
-        {/* Recent Orders */}
-        {mounted && isLoggedIn ? (
-          <div className="animate-fade-in-up">
-            <h2 className="text-xl font-serif font-bold text-white mb-6">
-              Recent Orders
-            </h2>
-            {customerOrders.length > 0 ? (
-              <div className="space-y-4">
-                {customerOrders.map((order) => (
-                  <div key={order.id} className="card p-4 flex items-center gap-4">
-                    <div className="relative w-14 h-18 rounded-xl overflow-hidden flex-shrink-0">
-                      <Image
-                        src={order.productImage}
-                        alt={order.productName}
-                        fill
-                        className="object-cover"
-                        sizes="56px"
-                      />
-                    </div>
+                    )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-amber-400 font-mono text-xs font-bold">
-                        {order.orderId}
-                      </p>
-                      <h3 className="text-white text-sm font-medium truncate">
-                        {order.productName}
+                      <p className="text-amber-400 font-mono text-xs font-bold mb-0.5">{order.id.slice(0, 16).toUpperCase()}</p>
+                      <h3 className="text-white font-medium text-sm truncate">
+                        {firstItem?.product?.title ?? "Order"}
+                        {order.items?.length > 1 && <span className="text-stone-500"> +{order.items.length - 1} more</span>}
                       </h3>
-                      <p className="text-stone-500 text-xs">
-                        {formatDate(order.createdAt)} •{" "}
-                        {formatPrice(order.totalAmount)}
+                      <p className="text-stone-500 text-xs mt-1">
+                        {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        {" • "}{formatPrice(Number(order.totalAmount))}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span
-                        className={`badge text-[10px] ${
-                          order.status === "delivered"
-                            ? "badge-success"
-                            : order.status === "shipped"
-                              ? "badge-info"
-                              : order.status === "processing"
-                                ? "badge-warning"
-                                : "badge-primary"
-                        }`}
-                      >
-                        {order.status.replace("-", " ")}
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <span className={`badge text-[10px] ${statusBadgeClass(order.status)}`}>{order.status}</span>
+                      <span className={`text-[10px] ${order.paymentStatus === "PAID" ? "text-emerald-400" : "text-amber-400"}`}>
+                        {order.paymentStatus}
                       </span>
-                      <button
-                        onClick={() => {
-                          setSearchId(order.orderId);
-                          setTrackedOrder(order);
-                          setShowTracker(true);
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                        className="text-indigo-400 text-xs hover:text-indigo-300"
-                      >
-                        Track →
-                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card p-8 text-center text-stone-500">
-                You haven't placed any orders yet.
+
+                  {/* Mini timeline */}
+                  <div className="flex items-center gap-1 mt-3 border-t border-stone-800 pt-3">
+                    {STATUS_STEPS.map((step, i) => {
+                      const done = i <= currentStepIdx;
+                      return (
+                        <div key={step.key} className="flex items-center flex-1">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-indigo-600" : "bg-stone-800"}`}>
+                            <step.icon className={`w-3 h-3 ${done ? "text-white" : "text-stone-600"}`} />
+                          </div>
+                          {i < STATUS_STEPS.length - 1 && (
+                            <div className={`flex-1 h-0.5 mx-1 ${i < currentStepIdx ? "bg-indigo-600" : "bg-stone-800"}`} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-between mt-2">
+                    {STATUS_STEPS.map((step) => (
+                      <span key={step.key} className="text-[9px] text-stone-600 text-center flex-1">{step.label}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Pagination */}
+            {orders.length > ORDERS_PER_PAGE && (
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="btn-outline p-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-stone-400 text-sm">
+                  Page {page} of {Math.ceil(orders.length / ORDERS_PER_PAGE)}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(Math.ceil(orders.length / ORDERS_PER_PAGE), p + 1))}
+                  disabled={page === Math.ceil(orders.length / ORDERS_PER_PAGE)}
+                  className="btn-outline p-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>
-        ) : (
-          mounted && (
-            <div className="card p-6 text-center animate-fade-in-up">
-              <h3 className="text-white font-semibold mb-2">
-                Want to see your full order history?
-              </h3>
-              <p className="text-stone-400 text-sm mb-4">
-                Log in to view and track all your purchases in one place.
-              </p>
-              <Link href="/auth/login" className="btn-primary inline-block">
-                Log In
-              </Link>
-            </div>
-          )
         )}
       </div>
     </div>

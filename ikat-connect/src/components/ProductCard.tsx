@@ -54,15 +54,17 @@ export function ProductCard({ product }: { product: Product }) {
 
       {/* Info */}
       <div className="p-4">
-        <div className="flex items-center gap-1 mb-2">
-          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-          <span className="text-amber-400 text-xs font-medium">
-            {product.rating}
-          </span>
-          <span className="text-stone-500 text-xs">
-            ({product.reviews} reviews)
-          </span>
-        </div>
+        {product.reviews > 0 ? (
+          <div className="flex items-center gap-1 mb-2">
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            <span className="text-amber-400 text-xs font-medium">{product.rating}</span>
+            <span className="text-stone-500 text-xs">({product.reviews})</span>
+          </div>
+        ) : (
+          <div className="mb-2">
+            <span className="text-[10px] font-medium text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">New</span>
+          </div>
+        )}
 
         <Link href={`/products/${product.id}`}>
           <h3 className="text-sm font-semibold text-stone-100 group-hover:text-amber-400 transition-colors line-clamp-2 mb-1">

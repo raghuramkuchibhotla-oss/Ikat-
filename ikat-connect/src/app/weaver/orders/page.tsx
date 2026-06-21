@@ -2,54 +2,44 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { ArrowLeft, CheckCircle, Clock, Truck, Package } from "lucide-react";
-import { useAuthStore } from "@/lib/auth-store";
-import { useDataStore } from "@/lib/data-store";
-import { formatPrice, formatDate } from "@/lib/utils";
-import type { OrderStatus } from "@/lib/data";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { getWeaverOrders, updateOrderStatus } from "@/actions/orders";
+import { formatPrice } from "@/lib/utils";
+
+const STATUS_OPTIONS = [
+  { value: "PLACED", label: "Placed / ఆర్డర్ అందింది" },
+  { value: "PROCESSING", label: "Processing / ప్రాసెసింగ్" },
+  { value: "SHIPPED", label: "Shipped / షిప్ చేయబడింది" },
+  { value: "DELIVERED", label: "Delivered / డెలివరీ అయింది" },
+  { value: "CANCELLED", label: "Cancelled / రద్దు చేయబడింది" },
+];
 
 export default function WeaverOrdersPage() {
-  const { user } = useAuthStore();
-  const { weavers, orders: allOrders, updateOrderStatus, addNotificationLog } = useDataStore();
-  const [mounted, setMounted] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState("");
 
   useEffect(() => {
-    setMounted(true);
+    getWeaverOrders().then((data) => { setOrders(data as any[]); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  if (!mounted) return null;
-
-  // Dynamically find current weaver's profile
-  const weaver = weavers.find((w) => w.userId === user?.id) || weavers[0];
-  const weaverId = weaver.id;
-
-  const orders = allOrders.filter((o) => o.weaverId === weaverId);
-
-  const updateStatus = (orderId: string, newStatus: OrderStatus, order: any) => {
-    updateOrderStatus(orderId, newStatus);
-    
-    // Trigger notification log
-    addNotificationLog({
-      type: "sms",
-      recipient: order.customerName,
-      message: `Your Ikat Connect order (${order.orderId}) status is now: ${newStatus.replace("-", " ")}`,
-    });
-    addNotificationLog({
-      type: "whatsapp",
-      recipient: order.customerName,
-      message: `Hi ${order.customerName}, your order for ${order.productName} is now: ${newStatus.replace("-", " ")}. Thank you for supporting authentic Ikat!`,
-    });
+  const handleStatusChange = async (orderId: string, status: string) => {
+    setUpdating(orderId);
+    setUpdateError("");
+    try {
+      await updateOrderStatus(orderId, status as any);
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status } : o));
+    } catch (e: any) {
+      setUpdateError(e.message ?? "Failed to update order status. Please try again.");
+    } finally {
+      setUpdating(null);
+    }
   };
 
-  const statusOptions: { value: OrderStatus; label: string; labelTE: string }[] = [
-    { value: "order-received", label: "Order Received", labelTE: "ఆర్డర్ అందింది" },
-    { value: "yarn-purchased", label: "Yarn Purchased (Pre-order)", labelTE: "నూలు కొనుగోలు (ప్రీ-ఆర్డర్)" },
-    { value: "weaving-started", label: "Weaving Started (Pre-order)", labelTE: "నేత ప్రారంభించబడింది (ప్రీ-ఆర్డర్)" },
-    { value: "processing", label: "Processing", labelTE: "ప్రాసెసింగ్" },
-    { value: "shipped", label: "Shipped", labelTE: "షిప్ చేయబడింది" },
-    { value: "delivered", label: "Delivered", labelTE: "డెలివరీ అయింది" },
-  ];
+  if (loading) {
+    return <div className="bg-[#0c0a09] min-h-screen flex items-center justify-center"><div className="text-stone-500">Loading Orders...</div></div>;
+  }
 
   return (
     <div className="bg-[#0c0a09] min-h-screen py-8">
@@ -59,58 +49,80 @@ export default function WeaverOrdersPage() {
         </Link>
 
         <h1 className="text-2xl font-serif font-bold text-white mb-1">Orders / ఆర్డర్లు</h1>
-        <p className="text-stone-400 text-sm mb-8">Manage and update your order statuses</p>
+        <p className="text-stone-400 text-sm mb-4">Manage and update your order statuses</p>
 
-        <div className="space-y-4 stagger-children">
-          {orders.map((order) => (
-            <div key={order.id} className="card p-5">
-              <div className="flex flex-col md:flex-row md:items-center gap-4">
-                <div className="relative w-16 h-20 rounded-xl overflow-hidden flex-shrink-0">
-                  <Image src={order.productImage} alt={order.productName} fill className="object-cover" sizes="64px" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-amber-400 font-mono text-sm font-bold">{order.orderId}</p>
-                  <h3 className="text-white font-medium truncate">
-                    {order.productName}
-                    {order.isPreOrder && (
-                      <span className="ml-2 badge bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] py-0 px-1">
-                        Pre-Order
-                      </span>
+        {updateError && (
+          <div className="mb-6 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3">
+            <p className="text-rose-400 text-sm">{updateError}</p>
+          </div>
+        )}
+
+        {orders.length === 0 ? (
+          <div className="card p-12 text-center text-stone-500">No orders received yet.</div>
+        ) : (
+          <div className="space-y-4 stagger-children">
+            {orders.map((order) => {
+              const firstItem = order.items?.[0];
+              const shippingAddr = order.shippingAddress as any;
+              return (
+                <div key={order.id} className="card p-5">
+                  <div className="flex flex-col md:flex-row md:items-center gap-4">
+                    {firstItem?.product?.images?.[0] && (
+                      <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 bg-stone-800">
+                        <img src={firstItem.product.images[0]} alt={firstItem.product.title} className="w-full h-full object-cover" />
+                      </div>
                     )}
-                  </h3>
-                  <p className="text-stone-500 text-xs mt-1">
-                    Customer: {order.customerName} • {order.customerPhone}
-                  </p>
-                  <p className="text-stone-500 text-xs">
-                    {formatDate(order.createdAt)} • {order.isPreOrder ? `Advance: ${formatPrice(order.advancePaidAmount || 0)}` : formatPrice(order.totalAmount)} • Qty: {order.quantity}
-                  </p>
-                  <p className="text-stone-600 text-xs mt-1 truncate">📍 {order.customerAddress}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-amber-400 font-mono text-sm font-bold">{order.id.slice(0, 12).toUpperCase()}</p>
+                      <h3 className="text-white font-medium truncate">
+                        {firstItem?.product?.title ?? "Order"}
+                        {order.items?.length > 1 && <span className="text-stone-500 text-sm"> +{order.items.length - 1} items</span>}
+                      </h3>
+                      <p className="text-stone-500 text-xs mt-1">
+                        Customer: {order.customer?.name ?? "—"}
+                        {order.customer?.phone && ` • ${order.customer.phone}`}
+                      </p>
+                      <p className="text-stone-500 text-xs">
+                        {new Date(order.createdAt).toLocaleDateString("en-IN")} •{" "}
+                        {formatPrice(Number(order.totalAmount))} • Qty: {firstItem?.quantity ?? 1}
+                      </p>
+                      {shippingAddr?.line1 && (
+                        <p className="text-stone-600 text-xs mt-1 truncate">
+                          📍 {shippingAddr.line1}, {shippingAddr.city}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-3 shrink-0">
+                      <div className="relative">
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                          disabled={updating === order.id}
+                          className={`input-field text-sm py-2 w-56 ${
+                            order.status === "DELIVERED" ? "border-emerald-500/50 text-emerald-400" :
+                            order.status === "SHIPPED" ? "border-blue-500/50 text-blue-400" :
+                            order.status === "PROCESSING" ? "border-amber-500/50 text-amber-400" :
+                            "border-indigo-500/50 text-indigo-400"
+                          }`}
+                        >
+                          {STATUS_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                        {updating === order.id && (
+                          <Loader2 className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-stone-400" />
+                        )}
+                      </div>
+                      <p className="text-stone-600 text-[10px]">
+                        Payment: <span className={order.paymentStatus === "PAID" ? "text-emerald-400" : "text-amber-400"}>{order.paymentStatus}</span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-3">
-                  <select
-                    value={order.status}
-                    onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus, order)}
-                    className={`input-field text-sm py-2 w-56 ${
-                      order.status === "delivered" ? "border-emerald-500/50 text-emerald-400" :
-                      order.status === "shipped" ? "border-blue-500/50 text-blue-400" :
-                      (order.status === "processing" || order.status === "weaving-started") ? "border-amber-500/50 text-amber-400" :
-                      "border-indigo-500/50 text-indigo-400"
-                    }`}
-                  >
-                    {statusOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label} / {opt.labelTE}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-stone-600 text-[10px] whitespace-nowrap">
-                    📱 SMS/WhatsApp notification will be sent
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

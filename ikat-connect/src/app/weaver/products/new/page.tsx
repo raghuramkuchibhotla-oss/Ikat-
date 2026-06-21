@@ -1,74 +1,43 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Upload, Plus, CheckCircle } from "lucide-react";
-import { useAuthStore } from "@/lib/auth-store";
-import { useDataStore } from "@/lib/data-store";
-import { generateProductId } from "@/lib/utils";
+import { ArrowLeft, Upload, Plus, CheckCircle, Loader2 } from "lucide-react";
+import { createProduct } from "@/actions/products";
+
+const CATEGORIES = [
+  { value: "SAREE", label: "Sarees / చీరలు" },
+  { value: "DUPATTA", label: "Dupattas / దుపట్టాలు" },
+  { value: "DRESS_MATERIAL", label: "Dress Materials" },
+];
 
 export default function NewProductPage() {
-  const { user } = useAuthStore();
-  const { weavers, addProduct } = useDataStore();
-  const [mounted, setMounted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    nameTE: "",
-    nameHI: "",
-    description: "",
-    price: "",
-    category: "sarees",
-    fabric: "",
-    color: "",
-    stockQuantity: "",
-  });
+  const [error, setError] = useState("");
+  const [imagePreview, setImagePreview] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Find weaver profile
-  const weaver = weavers.find((w) => w.userId === user?.id) || weavers[0];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const newProduct = {
-      id: `p-${Date.now()}`,
-      productId: generateProductId(),
-      name: form.name,
-      nameTE: form.nameTE || undefined,
-      nameHI: form.nameHI || undefined,
-      description: form.description,
-      price: Number(form.price),
-      category: form.category as any,
-      fabric: form.fabric,
-      color: form.color,
-      images: [
-        "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600&h=800&fit=crop",
-      ],
-      weaverId: weaver.id,
-      weaverName: weaver.name,
-      inStock: Number(form.stockQuantity) > 0,
-      stockQuantity: Number(form.stockQuantity),
-      rating: 5.0,
-      reviews: 0,
-      tags: [form.fabric.toLowerCase(), form.color.toLowerCase(), form.category],
-      createdAt: new Date().toISOString().split("T")[0],
-    };
-
-    addProduct(newProduct);
-    setSubmitted(true);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const previews = files.map((f) => URL.createObjectURL(f));
+    setImagePreview(previews);
   };
 
-  if (!mounted) {
-    return (
-      <div className="bg-[#0c0a09] min-h-screen flex items-center justify-center">
-        <div className="text-center text-stone-500">Loading Form...</div>
-      </div>
-    );
-  }
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const formData = new FormData(e.currentTarget);
+      await createProduct(formData);
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message ?? "Failed to add product. Make sure you are a verified weaver.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (submitted) {
     return (
@@ -81,25 +50,7 @@ export default function NewProductPage() {
           <p className="text-stone-400 mb-6">Your product is now listed on IKAT CONNECT</p>
           <div className="flex gap-4 justify-center">
             <Link href="/weaver/products" className="btn-outline">View Products</Link>
-            <button
-              onClick={() => {
-                setSubmitted(false);
-                setForm({
-                  name: "",
-                  nameTE: "",
-                  nameHI: "",
-                  description: "",
-                  price: "",
-                  category: "sarees",
-                  fabric: "",
-                  color: "",
-                  stockQuantity: "",
-                });
-              }}
-              className="btn-accent"
-            >
-              Add Another
-            </button>
+            <button onClick={() => { setSubmitted(false); setImagePreview([]); }} className="btn-accent">Add Another</button>
           </div>
         </div>
       </div>
@@ -116,76 +67,73 @@ export default function NewProductPage() {
         <h1 className="text-2xl font-serif font-bold text-white mb-1">Add New Product</h1>
         <p className="text-stone-400 text-sm mb-6">కొత్త ఉత్పత్తిని జోడించు • नया उत्पाद जोड़ें</p>
 
-        <form onSubmit={handleSubmit} className="card p-6 space-y-5">
-          {/* Product Name */}
-          <div>
-            <label className="text-stone-400 text-sm block mb-1.5">Product Name (English) *</label>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Royal Indigo Silk Saree" className="input-field" required />
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 mb-4">
+            <p className="text-rose-400 text-sm">{error}</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-stone-400 text-sm block mb-1.5">Name (తెలుగు)</label>
-              <input type="text" value={form.nameTE} onChange={(e) => setForm({ ...form, nameTE: e.target.value })} placeholder="తెలుగు పేరు" className="input-field" />
-            </div>
-            <div>
-              <label className="text-stone-400 text-sm block mb-1.5">Name (हिंदी)</label>
-              <input type="text" value={form.nameHI} onChange={(e) => setForm({ ...form, nameHI: e.target.value })} placeholder="हिंदी नाम" className="input-field" />
-            </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="card p-6 space-y-5">
+          <div>
+            <label className="text-stone-400 text-sm block mb-1.5">Product Title *</label>
+            <input name="title" type="text" placeholder="e.g. Royal Indigo Silk Saree" className="input-field" required />
           </div>
 
-          {/* Description */}
           <div>
             <label className="text-stone-400 text-sm block mb-1.5">Description *</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe your product..." className="input-field min-h-[100px]" required />
+            <textarea name="description" placeholder="Describe your product — materials, technique, dimensions..." className="input-field min-h-[100px]" required />
           </div>
 
-          {/* Category & Price */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-stone-400 text-sm block mb-1.5">Category *</label>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-field">
-                <option value="sarees">Sarees / చీరలు</option>
-                <option value="dupattas">Dupattas / దుపట్టాలు</option>
-                <option value="dress-materials">Dress Materials</option>
+              <select name="category" className="input-field" required>
+                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-stone-400 text-sm block mb-1.5">Price (₹) *</label>
-              <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="e.g. 5000" className="input-field" required />
+              <input name="price" type="number" min="1" placeholder="e.g. 5000" className="input-field" required />
             </div>
           </div>
 
-          {/* Fabric & Color */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-stone-400 text-sm block mb-1.5">Fabric *</label>
-              <input type="text" value={form.fabric} onChange={(e) => setForm({ ...form, fabric: e.target.value })} placeholder="e.g. Pure Silk" className="input-field" required />
-            </div>
-            <div>
-              <label className="text-stone-400 text-sm block mb-1.5">Color *</label>
-              <input type="text" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="e.g. Indigo Blue" className="input-field" required />
-            </div>
-          </div>
-
-          {/* Stock */}
           <div>
             <label className="text-stone-400 text-sm block mb-1.5">Stock Quantity *</label>
-            <input type="number" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} placeholder="e.g. 10" className="input-field" required />
+            <input name="stock" type="number" min="0" placeholder="e.g. 10" className="input-field" required />
           </div>
 
-          {/* Photo Upload */}
           <div>
             <label className="text-stone-400 text-sm block mb-1.5">Product Photos</label>
-            <div className="border-2 border-dashed border-stone-700 rounded-xl p-8 text-center hover:border-amber-500/50 transition-colors cursor-pointer">
+            <input
+              ref={fileInputRef}
+              type="file"
+              name="images"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImageChange}
+            />
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-stone-700 rounded-xl p-8 text-center hover:border-amber-500/50 transition-colors cursor-pointer"
+            >
               <Upload className="w-8 h-8 text-stone-500 mx-auto mb-2" />
               <p className="text-stone-400 text-sm">Click to upload photos</p>
-              <p className="text-stone-600 text-xs mt-1">PNG, JPG up to 5MB</p>
+              <p className="text-stone-600 text-xs mt-1">PNG, JPG up to 5MB each</p>
             </div>
+            {imagePreview.length > 0 && (
+              <div className="flex gap-3 mt-3 flex-wrap">
+                {imagePreview.map((src, i) => (
+                  <img key={i} src={src} alt={`Preview ${i + 1}`} className="w-20 h-24 object-cover rounded-xl border border-stone-700" />
+                ))}
+              </div>
+            )}
+            <p className="text-stone-600 text-xs mt-2">Images will be uploaded to Cloudinary once credentials are configured.</p>
           </div>
 
-          <button type="submit" className="btn-accent w-full flex items-center justify-center gap-2 mt-2">
-            <Plus className="w-4 h-4" />
-            Add Product / ఉత్పత్తిని జోడించు
+          <button type="submit" disabled={submitting} className="btn-accent w-full flex items-center justify-center gap-2 mt-2 disabled:opacity-60">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {submitting ? "Adding Product..." : "Add Product / ఉత్పత్తిని జోడించు"}
           </button>
         </form>
       </div>
