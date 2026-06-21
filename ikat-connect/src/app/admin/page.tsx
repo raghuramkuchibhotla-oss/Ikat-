@@ -1,27 +1,44 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Users,
-  Package,
-  ShoppingCart,
-  TrendingUp,
-  ArrowRight,
-  Layers,
-  Shield,
-  Clock,
-  AlertTriangle,
-  Smartphone,
-  BarChart,
-} from "lucide-react";
-import { useDataStore } from "@/lib/data-store";
-import { formatPrice, formatDate } from "@/lib/utils";
+import { Users, Package, ShoppingCart, TrendingUp, ArrowRight, Layers, Shield, AlertTriangle, Smartphone, BarChart } from "lucide-react";
+import { getAllWeavers } from "@/actions/weavers";
+import { getAllOrders } from "@/actions/orders";
+import { getProducts } from "@/actions/products";
+import { getAllYarnRequests } from "@/actions/yarn";
+import { formatPrice } from "@/lib/utils";
 
 export default function AdminDashboard() {
-  const { weavers, products, orders, yarnRequests } = useDataStore();
-  const totalRevenue = orders.reduce((s, o) => s + o.totalAmount, 0);
-  const pendingWeavers = weavers.filter((w) => w.verificationStatus === "pending");
-  const pendingOrders = orders.filter((o) => o.status === "order-received" || o.status === "processing");
+  const [weavers, setWeavers] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [yarnRequests, setYarnRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getAllWeavers(), getAllOrders(), getProducts(), getAllYarnRequests()])
+      .then(([w, o, p, y]) => {
+        setWeavers(w as any[]);
+        setOrders(o as any[]);
+        setProducts(p as any[]);
+        setYarnRequests(y as any[]);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const totalRevenue = orders.reduce((s, o) => s + Number(o.totalAmount), 0);
+  const pendingWeavers = weavers.filter((w) => w.status === "PENDING");
+  const pendingOrders = orders.filter((o) => o.status === "PLACED" || o.status === "PROCESSING");
+
+  if (loading) {
+    return (
+      <div className="bg-[#0c0a09] min-h-screen flex items-center justify-center">
+        <div className="text-stone-500">Loading Dashboard...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#0c0a09] min-h-screen py-8">
@@ -31,13 +48,9 @@ export default function AdminDashboard() {
             <h1 className="text-2xl md:text-3xl font-serif font-bold text-white mb-1">Admin Dashboard</h1>
             <p className="text-stone-400">Manage weavers, products, orders, and yarn board</p>
           </div>
-          <span className="badge badge-success">
-            <Shield className="w-3 h-3 mr-1" />
-            Admin
-          </span>
+          <span className="badge badge-success"><Shield className="w-3 h-3 mr-1" />Admin</span>
         </div>
 
-        {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 stagger-children">
           {[
             { label: "Total Weavers", value: weavers.length, icon: Users, color: "text-indigo-400", bg: "bg-indigo-500/10" },
@@ -55,7 +68,6 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Alerts */}
         {pendingWeavers.length > 0 && (
           <div className="card p-4 mb-6 border-amber-500/20 animate-fade-in-up">
             <div className="flex items-center gap-3">
@@ -63,14 +75,11 @@ export default function AdminDashboard() {
               <p className="text-amber-400 text-sm">
                 <span className="font-bold">{pendingWeavers.length}</span> weaver(s) pending verification
               </p>
-              <Link href="/admin/weavers" className="ml-auto text-amber-400 text-sm hover:text-amber-300">
-                Review →
-              </Link>
+              <Link href="/admin/weavers" className="ml-auto text-amber-400 text-sm hover:text-amber-300">Review →</Link>
             </div>
           </div>
         )}
 
-        {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           {[
             { href: "/admin/weavers", label: "Manage Weavers", desc: `${pendingWeavers.length} pending`, icon: Users, color: "text-indigo-400" },
@@ -82,60 +91,54 @@ export default function AdminDashboard() {
           ].map((action) => (
             <Link key={action.href} href={action.href} className="card p-5 group hover:border-indigo-500/30">
               <action.icon className={`w-6 h-6 ${action.color} mb-3`} />
-              <h3 className="text-white font-semibold text-sm mb-1 group-hover:text-amber-400 transition-colors">
-                {action.label}
-              </h3>
+              <h3 className="text-white font-semibold text-sm mb-1 group-hover:text-amber-400 transition-colors">{action.label}</h3>
               <p className="text-stone-500 text-xs">{action.desc}</p>
               <ArrowRight className="w-4 h-4 text-stone-600 mt-3 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
             </Link>
           ))}
         </div>
 
-        {/* Recent Orders Table */}
         <div className="card p-6 animate-fade-in-up">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white font-semibold">Recent Orders</h2>
             <Link href="/admin/orders" className="text-indigo-400 text-sm hover:text-indigo-300">View All →</Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-stone-500 text-xs uppercase tracking-wider border-b border-stone-800">
-                  <th className="pb-3 pr-4">Order ID</th>
-                  <th className="pb-3 pr-4">Customer</th>
-                  <th className="pb-3 pr-4">Weaver</th>
-                  <th className="pb-3 pr-4">Product</th>
-                  <th className="pb-3 pr-4">Amount</th>
-                  <th className="pb-3 pr-4">Payment</th>
-                  <th className="pb-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.slice(0, 5).map((order) => (
-                  <tr key={order.id} className="border-b border-stone-800/50 hover:bg-stone-800/30">
-                    <td className="py-3 pr-4 font-mono text-amber-400 text-sm">{order.orderId}</td>
-                    <td className="py-3 pr-4 text-white text-sm">{order.customerName}</td>
-                    <td className="py-3 pr-4 text-stone-400 text-sm">{order.weaverName}</td>
-                    <td className="py-3 pr-4 text-stone-400 text-sm truncate max-w-[150px]">{order.productName}</td>
-                    <td className="py-3 pr-4 text-white text-sm">{formatPrice(order.totalAmount)}</td>
-                    <td className="py-3 pr-4">
-                      <span className="badge badge-success text-[10px]">{order.paymentMethod}</span>
-                    </td>
-                    <td className="py-3">
-                      <span className={`badge text-[10px] ${
-                        order.status === "delivered" ? "badge-success" :
-                        order.status === "shipped" ? "badge-info" :
-                        (order.status === "processing" || order.status === "weaving-started") ? "badge-warning" :
-                        "badge-primary"
-                      }`}>
-                        {order.status.replace("-", " ")}
-                      </span>
-                    </td>
+          {orders.length === 0 ? (
+            <p className="text-stone-500 text-sm text-center py-6">No orders yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-stone-500 text-xs uppercase tracking-wider border-b border-stone-800">
+                    <th className="pb-3 pr-4">Order</th>
+                    <th className="pb-3 pr-4">Customer</th>
+                    <th className="pb-3 pr-4">Amount</th>
+                    <th className="pb-3 pr-4">Payment</th>
+                    <th className="pb-3">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {orders.slice(0, 5).map((order) => (
+                    <tr key={order.id} className="border-b border-stone-800/50 hover:bg-stone-800/30">
+                      <td className="py-3 pr-4 font-mono text-amber-400 text-sm">{order.id.slice(0, 10).toUpperCase()}</td>
+                      <td className="py-3 pr-4 text-white text-sm">{order.customer?.name ?? "—"}</td>
+                      <td className="py-3 pr-4 text-white text-sm">{formatPrice(Number(order.totalAmount))}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`badge text-[10px] ${order.paymentStatus === "PAID" ? "badge-success" : "badge-warning"}`}>{order.paymentStatus}</span>
+                      </td>
+                      <td className="py-3">
+                        <span className={`badge text-[10px] ${
+                          order.status === "DELIVERED" ? "badge-success" :
+                          order.status === "SHIPPED" ? "badge-info" :
+                          order.status === "PROCESSING" ? "badge-warning" : "badge-primary"
+                        }`}>{order.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
